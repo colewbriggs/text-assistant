@@ -4,6 +4,7 @@ import MapKit
 struct PlaceDetailView: View {
     let place: Place
     let messages: [Message]
+    @EnvironmentObject var viewModel: ListViewModel
 
     init(place: Place, messages: [Message] = []) {
         self.place = place
@@ -38,6 +39,7 @@ struct PlaceDetailView: View {
                     ForEach(messages) { message in
                         MessageRowView(message: message, highlightedName: place.name)
                     }
+                    .onDelete(perform: deleteMessages)
                 }
             } header: {
                 Text("Messages")
@@ -45,6 +47,13 @@ struct PlaceDetailView: View {
         }
         .navigationTitle(place.name)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func deleteMessages(offsets: IndexSet) {
+        for index in offsets {
+            let messageToDelete = messages[index]
+            viewModel.deleteMessage(messageToDelete)
+        }
     }
 }
 

@@ -12,7 +12,7 @@ struct ListView: View {
                         .font(.caption)
                 } else {
                     ForEach(viewModel.people) { person in
-                        NavigationLink(destination: PersonDetailView(person: person, messages: viewModel.getMessagesForPerson(person.name))) {
+                        NavigationLink(destination: PersonDetailView(person: person, messages: viewModel.getMessagesForPerson(person.name)).environmentObject(viewModel)) {
                             HStack {
                                 Image(systemName: "person.fill")
                                     .foregroundColor(.blue)

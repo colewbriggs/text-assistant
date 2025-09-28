@@ -16,12 +16,12 @@ struct MainTabView: View {
                 ChatViewWithList()
                     .environmentObject(listViewModel)
                     .environmentObject(chatViewModel)
-                    .navigationTitle("Messages")
+                    .navigationTitle("Add Entry")
                     .navigationBarTitleDisplayMode(.inline)
             }
             .tabItem {
-                Image(systemName: "message.fill")
-                Text("Messages")
+                Image(systemName: "plus.circle.fill")
+                Text("Add Entry")
             }
             
             NavigationView {

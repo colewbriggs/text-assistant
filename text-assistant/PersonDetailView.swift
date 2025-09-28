@@ -3,6 +3,7 @@ import SwiftUI
 struct PersonDetailView: View {
     let person: Person
     let messages: [Message]
+    @EnvironmentObject var viewModel: ListViewModel
 
     init(person: Person, messages: [Message] = []) {
         self.person = person
@@ -19,10 +20,18 @@ struct PersonDetailView: View {
                 ForEach(messages) { message in
                     MessageRowView(message: message, highlightedName: person.name)
                 }
+                .onDelete(perform: deleteMessages)
             }
         }
         .navigationTitle(person.name)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func deleteMessages(offsets: IndexSet) {
+        for index in offsets {
+            let messageToDelete = messages[index]
+            viewModel.deleteMessage(messageToDelete)
+        }
     }
 }
 

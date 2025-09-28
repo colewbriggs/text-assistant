@@ -12,6 +12,13 @@ struct Message: Identifiable, Codable {
         self.timestamp = Date()
         self.mentions = mentions
     }
+
+    init(id: UUID, text: String, timestamp: Date, mentions: [Mention]) {
+        self.id = id
+        self.text = text
+        self.timestamp = timestamp
+        self.mentions = mentions
+    }
 }
 
 struct Mention: Identifiable, Codable {

@@ -69,31 +69,37 @@ class AuthenticationManager: ObservableObject {
                 return
             }
             
-            Task {
-                do {
-                    print("Attempting Supabase sign in with idToken: \(idToken.prefix(20))...")
-                    try await supabaseService.signInWithApple(idToken: idToken, nonce: nonce)
-                    print("Successfully signed in with Supabase")
-                    
-                    // Force a UI update to show success
-                    await MainActor.run {
-                        print("Auth state should now be: \(self.supabaseService.isAuthenticated)")
-                    }
-                } catch {
-                    print("Supabase sign in error: \(error)")
-                    print("Error details: \(error.localizedDescription)")
-                    
-                    // For now, let's bypass Supabase and just set authenticated locally
-                    await MainActor.run {
-                        self.lastError = "Supabase failed: \(error.localizedDescription)"
-                        self.isAuthenticated = true
-                        self.userID = "temp_user"
-                        self.userName = "Test User"
-                        self.userEmail = "test@example.com"
-                        print("Temporarily bypassed Supabase - set auth to true")
-                    }
-                }
+            // For now, we'll use a simplified approach - just set authenticated with the user ID
+            let appleUserId = credential.user
+            let userEmail = credential.email
+
+            print("Apple Sign In Debug:")
+            print("- User ID: \(appleUserId)")
+            print("- Email: \(userEmail ?? "nil")")
+            print("- Full Name: \(credential.fullName?.formatted() ?? "nil")")
+
+            // For Apple Sign In, email is only provided on first authorization
+            // Store email when first provided, retrieve on subsequent logins
+            let storedEmailKey = "AppleSignIn_Email_\(appleUserId)"
+
+            let finalEmail: String
+            if let userEmail = userEmail {
+                // First time or re-authorization - store the email
+                UserDefaults.standard.set(userEmail, forKey: storedEmailKey)
+                finalEmail = userEmail
+                print("Stored new email: \(userEmail)")
+            } else if let storedEmail = UserDefaults.standard.string(forKey: storedEmailKey) {
+                // Subsequent logins - use stored email
+                finalEmail = storedEmail
+                print("Using stored email: \(storedEmail)")
+            } else {
+                // Fallback if no email available
+                finalEmail = "Apple User"
+                print("No email available, using fallback")
             }
+
+            supabaseService.setAuthenticated(userId: appleUserId, email: finalEmail)
+            print("Successfully authenticated with Apple ID: \(appleUserId), Using Email: \(finalEmail)")
             
         case .failure(let error):
             print("Sign in with Apple failed: \(error.localizedDescription)")

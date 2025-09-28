@@ -11,7 +11,7 @@ struct LocationsView: View {
                     .font(.caption)
             } else {
                 ForEach(viewModel.places) { place in
-                    NavigationLink(destination: PlaceDetailView(place: place, messages: viewModel.getMessagesForPlace(place.name))) {
+                    NavigationLink(destination: PlaceDetailView(place: place, messages: viewModel.getMessagesForPlace(place.name)).environmentObject(viewModel)) {
                         HStack {
                             Image(systemName: "location.fill")
                                 .foregroundColor(.red)

@@ -46,13 +46,21 @@ class ListViewModel: ObservableObject {
     @Published var places: [Place] = []
     @Published var crmMessages: [Message] = [] // Permanent CRM message history
 
-    private let userDefaults = UserDefaults.standard
-    private let peopleKey = "saved_people"
-    private let placesKey = "saved_places"
-    private let crmMessagesKey = "crm_messages"
-    
+    private let supabaseService = SimpleSupabaseService.shared
+    private var cancellables = Set<AnyCancellable>()
+
     init() {
         loadData()
+
+        // Listen for authentication changes and reload data
+        supabaseService.$isAuthenticated
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isAuth in
+                if isAuth {
+                    self?.loadData()
+                }
+            }
+            .store(in: &cancellables)
     }
 
     func deletePerson(_ person: Person) {
@@ -68,7 +76,6 @@ class ListViewModel: ObservableObject {
             return mentionsOnlyThisPerson
         }
 
-        saveData()
         print("Deleted person: \(person.name)")
     }
 
@@ -84,34 +91,64 @@ class ListViewModel: ObservableObject {
             return mentionsOnlyThisPlace
         }
 
-        saveData()
         print("Deleted place: \(place.name)")
+    }
+
+    func deleteMessage(_ message: Message) {
+        Task {
+            do {
+                try await supabaseService.deleteMessage(message.id)
+                await MainActor.run {
+                    crmMessages.removeAll { $0.id == message.id }
+                    updateCountersFromMessages()
+                }
+                print("Deleted message: \(message.text)")
+            } catch {
+                print("Error deleting message: \(error)")
+            }
+        }
     }
 
     func addPerson(_ name: String) {
         let person = Person(name: name)
         people.append(person)
-        saveData()
     }
     
     
     func addMessageToCRM(_ message: Message, placeCoordinates: [String: PlaceSearchResult] = [:]) {
-        // Store message permanently for CRM
-        crmMessages.append(message)
+        print("💾 Adding message to CRM: '\(message.text)'")
+        print("💾 Message mentions: \(message.mentions.map { "\($0.text) (\($0.type))" })")
 
-        // Update people/places without incrementing counters manually
-        for mention in message.mentions {
-            if mention.type == .place, let placeResult = placeCoordinates[mention.text.replacingOccurrences(of: "@", with: "")] {
-                addPlaceWithCoordinates(name: mention.text, coordinate: placeResult.coordinate)
-            } else {
-                addPersonOrPlaceIfNeeded(for: mention.text, type: mention.type)
+        Task {
+            do {
+                // Save to Supabase
+                try await supabaseService.saveMessage(message)
+                print("✅ Message saved to Supabase successfully")
+
+                await MainActor.run {
+                    // Store message locally for immediate UI update
+                    crmMessages.append(message)
+                    print("📱 Message added to local array. Total messages: \(crmMessages.count)")
+
+                    // Update people/places without incrementing counters manually
+                    for mention in message.mentions {
+                        print("🔍 Processing mention: \(mention.text) (\(mention.type))")
+                        if mention.type == .place, let placeResult = placeCoordinates[mention.text.replacingOccurrences(of: "@", with: "")] {
+                            addPlaceWithCoordinates(name: mention.text, coordinate: placeResult.coordinate)
+                        } else {
+                            addPersonOrPlaceIfNeeded(for: mention.text, type: mention.type)
+                        }
+                    }
+
+                    // Recalculate all counters from actual message count
+                    updateCountersFromMessages()
+                    print("👥 After adding message - People count: \(people.count)")
+                    print("👥 People: \(people.map { $0.name })")
+                }
+            } catch {
+                print("💥 Error saving message to Supabase: \(error)")
             }
         }
-
-        // Recalculate all counters from actual message count
-        updateCountersFromMessages()
-
-        saveData()
     }
 
     private func addPlaceWithCoordinates(name: String, coordinate: CLLocationCoordinate2D) {
@@ -179,7 +216,6 @@ class ListViewModel: ObservableObject {
             }
         }
 
-        saveData()
     }
 
     func getMessagesForPerson(_ personName: String) -> [Message] {
@@ -200,33 +236,58 @@ class ListViewModel: ObservableObject {
     }
     
     
-    private func saveData() {
-        if let peopleData = try? JSONEncoder().encode(people) {
-            userDefaults.set(peopleData, forKey: peopleKey)
-        }
-        if let placesData = try? JSONEncoder().encode(places) {
-            userDefaults.set(placesData, forKey: placesKey)
-        }
-        if let crmMessagesData = try? JSONEncoder().encode(crmMessages) {
-            userDefaults.set(crmMessagesData, forKey: crmMessagesKey)
-        }
-    }
     
     private func loadData() {
-        if let peopleData = userDefaults.data(forKey: peopleKey),
-           let decodedPeople = try? JSONDecoder().decode([Person].self, from: peopleData) {
-            people = decodedPeople
+        print("🔄 ListViewModel.loadData() called")
+        print("🔐 Authentication status: \(supabaseService.isAuthenticated)")
+        print("👤 Current user ID: \(supabaseService.currentUserId ?? "nil")")
+
+        Task {
+            do {
+                if supabaseService.isAuthenticated {
+                    let messages = try await supabaseService.loadMessages()
+                    await MainActor.run {
+                        crmMessages = messages
+                        print("📝 Loaded \(messages.count) messages from Supabase")
+                        print("📝 Messages: \(messages.map { "\($0.text) - mentions: \($0.mentions.count)" })")
+                        rebuildPeopleAndPlacesFromMessages()
+                        print("👥 After rebuild - People count: \(people.count)")
+                        print("👥 People: \(people.map { $0.name })")
+                    }
+                } else {
+                    print("❌ Not authenticated, skipping Supabase data load")
+                }
+            } catch {
+                print("💥 Error loading data from Supabase: \(error)")
+            }
+        }
+    }
+
+    private func rebuildPeopleAndPlacesFromMessages() {
+        people = []
+        places = []
+
+        for message in crmMessages {
+            for mention in message.mentions {
+                let cleanName = mention.text.replacingOccurrences(of: "@", with: "")
+
+                switch mention.type {
+                case .person:
+                    if !people.contains(where: { $0.name.lowercased() == cleanName.lowercased() }) {
+                        people.append(Person(name: cleanName))
+                    }
+                case .place:
+                    if !places.contains(where: { $0.name.lowercased() == cleanName.lowercased() }) {
+                        places.append(Place(name: cleanName))
+                    }
+                }
+            }
         }
 
+        updateCountersFromMessages()
+    }
 
-        if let placesData = userDefaults.data(forKey: placesKey),
-           let decodedPlaces = try? JSONDecoder().decode([Place].self, from: placesData) {
-            places = decodedPlaces
-        }
-
-        if let crmMessagesData = userDefaults.data(forKey: crmMessagesKey),
-           let decodedMessages = try? JSONDecoder().decode([Message].self, from: crmMessagesData) {
-            crmMessages = decodedMessages
-        }
+    func refreshData() {
+        loadData()
     }
 }

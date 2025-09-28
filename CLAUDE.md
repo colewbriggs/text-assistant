@@ -1,9 +1,10 @@
 # Text Assistant - Apple Sign In Debug Context
 
 ## Current Status
-- App successfully authenticates locally but Supabase integration is failing
-- Error: "unacceptable audience in id_token: [cole.test-assistant]"
-- Using bypass authentication to allow app to work while debugging Supabase
+- ✅ Supabase authentication is now working successfully
+- Apple Sign In integration with Supabase completed
+- Authentication flow functioning properly
+- Service ID correctly configured as `cole.text-assistant`
 
 ## Configuration Details
 
@@ -11,13 +12,13 @@
 - **Team ID**: TT3Y78TSSQ
 - **Key ID**: G834N45JGZ  
 - **App Bundle ID**: cole.text-assistant (shows in Xcode)
-- **Service ID**: cole.test-assistant.service (created to match error)
+- **Service ID**: cole.text-assistant
 - **Private Key**: AuthKey_G834N45JGZ.p8
 
 ### Supabase Configuration
 - **Project ID**: hhfrjzypqunwalpfujeb
 - **Project URL**: https://hhfrjzypqunwalpfujeb.supabase.co
-- **Client ID**: cole.test-assistant.service
+- **Client ID**: cole.text-assistant
 - **Secret Key**: JWT token generated from script
 
 ### Service ID Configuration
@@ -26,8 +27,8 @@
 
 ## Issue Summary
 1. App Bundle ID shows as `cole.text-assistant` in Xcode
-2. Error message shows `cole.test-assistant` (test vs text discrepancy)
-3. Created Service ID to match error message but still failing
+2. ✅ Service ID correctly set to `cole.text-assistant`
+3. Generated new JWT token with correct Service ID
 4. Console logs not appearing in Xcode
 5. Using UI-based debug info in MainTabView to show auth status
 

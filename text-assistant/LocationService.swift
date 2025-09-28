@@ -5,6 +5,7 @@ import Combine
 
 struct PlaceSearchResult {
     let name: String
+    let address: String
     let coordinate: CLLocationCoordinate2D
 }
 
@@ -85,7 +86,30 @@ class LocationService: NSObject, ObservableObject {
 
             let results = response.mapItems.compactMap { item -> PlaceSearchResult? in
                 guard let name = item.name else { return nil }
-                return PlaceSearchResult(name: name, coordinate: item.placemark.coordinate)
+
+                // Build address from placemark components
+                let placemark = item.placemark
+                var addressComponents: [String] = []
+
+                if let streetNumber = placemark.subThoroughfare {
+                    if let streetName = placemark.thoroughfare {
+                        addressComponents.append("\(streetNumber) \(streetName)")
+                    }
+                } else if let streetName = placemark.thoroughfare {
+                    addressComponents.append(streetName)
+                }
+
+                if let city = placemark.locality {
+                    addressComponents.append(city)
+                }
+
+                if let state = placemark.administrativeArea {
+                    addressComponents.append(state)
+                }
+
+                let address = addressComponents.isEmpty ? "Address not available" : addressComponents.joined(separator: ", ")
+
+                return PlaceSearchResult(name: name, address: address, coordinate: placemark.coordinate)
             }
 
             DispatchQueue.main.async {
