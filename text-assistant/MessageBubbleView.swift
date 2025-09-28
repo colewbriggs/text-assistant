@@ -13,34 +13,7 @@ struct MessageBubbleView: View {
                     .background(Color.blue)
                     .foregroundColor(.white)
                     .cornerRadius(18)
-                
-                // Show parsed mentions below if any
-                if !message.mentions.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Detected mentions:")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        HStack {
-                            ForEach(message.mentions) { mention in
-                                HStack(spacing: 4) {
-                                    Circle()
-                                        .fill(colorForMentionType(mention.type))
-                                        .frame(width: 8, height: 8)
-                                    Text(mention.text)
-                                        .font(.caption)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(colorForMentionType(mention.type).opacity(0.2))
-                                        .cornerRadius(10)
-                                }
-                            }
-                            Spacer()
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                }
-                
+
                 // Timestamp
                 Text(formatTimestamp(message.timestamp))
                     .font(.caption2)
@@ -53,24 +26,30 @@ struct MessageBubbleView: View {
     
     private var attributedText: AttributedString {
         var attributed = AttributedString(message.text)
-        
-        // Highlight @ mentions in the text
+
+        // Highlight @ mentions in the text with contrasting colors
         for mention in message.mentions {
-            let startIndex = message.text.index(message.text.startIndex, offsetBy: mention.range.location)
-            let endIndex = message.text.index(startIndex, offsetBy: mention.range.length)
-            
-            if let attributedRange = Range(startIndex..<endIndex, in: attributed) {
-                attributed[attributedRange].font = .boldSystemFont(ofSize: 16)
+            if let range = attributed.range(of: mention.text, options: .caseInsensitive) {
+                attributed[range].font = .body.weight(.bold)
+                // Use bright contrasting colors that show up on blue background
+                attributed[range].foregroundColor = brightColorForMentionType(mention.type)
             }
         }
-        
+
         return attributed
+    }
+
+    private func brightColorForMentionType(_ type: MentionType) -> Color {
+        switch type {
+        case .person: return .yellow     // Bright yellow for people
+        case .place: return .orange      // Bright orange for places
+        }
     }
     
     private func colorForMentionType(_ type: MentionType) -> Color {
         switch type {
         case .person: return .blue
-        case .project: return .green
+        case .place: return .red
         }
     }
     
@@ -84,11 +63,11 @@ struct MessageBubbleView: View {
 #Preview {
     let sampleMentions = [
         Mention(text: "@john", type: .person, range: NSRange(location: 13, length: 5)),
-        Mention(text: "@project-alpha", type: .project, range: NSRange(location: 29, length: 14))
+        Mention(text: "@starbucks", type: .place, range: NSRange(location: 29, length: 10))
     ]
-    
-    let sampleMessage = Message(text: "Meeting with @john about @project-alpha", mentions: sampleMentions)
-    
-    return MessageBubbleView(message: sampleMessage)
+
+    let sampleMessage = Message(text: "Meeting with @john at @starbucks", mentions: sampleMentions)
+
+    MessageBubbleView(message: sampleMessage)
         .padding()
 }

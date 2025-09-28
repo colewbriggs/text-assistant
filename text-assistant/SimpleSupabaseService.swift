@@ -60,6 +60,10 @@ class SimpleSupabaseService: ObservableObject {
             }
         }
     }
+
+    func setBypassMode() {
+        isAuthenticated = true
+    }
 }
 
 enum SimpleSupabaseError: Error {

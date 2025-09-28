@@ -21,7 +21,6 @@ class AuthenticationManager: ObservableObject {
         supabaseService.$isAuthenticated
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isAuth in
-                print("Auth state changed: \(isAuth)")
                 self?.isAuthenticated = isAuth
             }
             .store(in: &cancellables)
@@ -103,11 +102,16 @@ class AuthenticationManager: ObservableObject {
     
     func bypassAuthentication() {
         print("Bypassing authentication for development")
+
+        // Set local state
         isAuthenticated = true
         userID = "dev_user"
         userName = "Dev User"
         userEmail = "dev@example.com"
         lastError = nil
+
+        // Also set Supabase service state to prevent it from overriding
+        supabaseService.setBypassMode()
     }
 
     func signOut() {

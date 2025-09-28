@@ -6,6 +6,11 @@ class ChatViewModel: ObservableObject {
     @Published var messages: [Message] = []
     @Published var currentInput: String = ""
     @Published var suggestions: [String] = []
+
+    // Track sources for type detection
+    var appleMapsPlaces: Set<String> = []
+    var appleMapsPlaceResults: [String: PlaceSearchResult] = [:]
+    var contactPeople: Set<String> = []
     
     private let userDefaults = UserDefaults.standard
     private let messagesKey = "saved_messages"
@@ -29,33 +34,63 @@ class ChatViewModel: ObservableObject {
     
     func extractMentions(from text: String) -> [Mention] {
         var mentions: [Mention] = []
-        let regex = try! NSRegularExpression(pattern: "@\\w+", options: [])
+        // Pattern: @ followed by letters/spaces/hyphens, but stop at punctuation that would end a name
+        let regex = try! NSRegularExpression(pattern: "@[\\w\\s\\-]+", options: [])
         let range = NSRange(location: 0, length: text.utf16.count)
-        
+
         regex.enumerateMatches(in: text, options: [], range: range) { match, _, _ in
             guard let matchRange = match?.range else { return }
-            
+
             let startIndex = text.index(text.startIndex, offsetBy: matchRange.location)
             let endIndex = text.index(startIndex, offsetBy: matchRange.length)
-            let mentionText = String(text[startIndex..<endIndex])
-            
+            var mentionText = String(text[startIndex..<endIndex])
+
+            // Clean up the mention text
+            mentionText = cleanMentionText(mentionText)
+
+            // Skip if mention is just "@" or empty after cleaning
+            guard mentionText.count > 1 else { return }
+
             // Simple type detection based on common patterns
-            let type = detectMentionType(mentionText)
+            guard let type = detectMentionType(mentionText) else { return } // Skip invalid mentions
             let mention = Mention(text: mentionText, type: type, range: matchRange)
             mentions.append(mention)
         }
-        
+
         return mentions
     }
-    
-    private func detectMentionType(_ mention: String) -> MentionType {
-        let lowercased = mention.lowercased()
-        
-        if lowercased.contains("project") || lowercased.contains("work") {
-            return .project
-        } else {
-            return .person  // Default to person for most @ mentions
+
+    private func cleanMentionText(_ mention: String) -> String {
+        var cleaned = mention
+
+        // Remove trailing punctuation except hyphens (for hyphenated names)
+        let trailingPunctuation = CharacterSet.punctuationCharacters.subtracting(CharacterSet(charactersIn: "-"))
+        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines.union(trailingPunctuation))
+
+        // Remove trailing words that look like message continuation
+        let words = cleaned.components(separatedBy: .whitespaces)
+        if words.count > 3 {
+            // If more than 3 words, likely includes message text - keep only first 2-3 words
+            cleaned = words.prefix(2).joined(separator: " ")
         }
+
+        return cleaned
+    }
+    
+    private func detectMentionType(_ mention: String) -> MentionType? {
+        let cleanMention = mention.replacingOccurrences(of: "@", with: "")
+
+        // Check source-based detection first
+        if appleMapsPlaces.contains(cleanMention) {
+            return .place
+        }
+
+        if contactPeople.contains(cleanMention) {
+            return .person
+        }
+
+        // Only allow contacts as people mentions - return nil for unknown mentions
+        return nil
     }
     
     func updateSuggestions(for input: String) {

@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CoreLocation
 
 struct Person: Identifiable, Codable {
     var id = UUID()
@@ -15,29 +16,39 @@ struct Person: Identifiable, Codable {
     }
 }
 
-struct Project: Identifiable, Codable {
+
+struct Place: Identifiable, Codable {
     var id = UUID()
     let name: String
     var messageCount: Int = 0
     var lastMentioned: Date?
-    
-    init(name: String) {
+    let latitude: Double?
+    let longitude: Double?
+
+    init(name: String, latitude: Double? = nil, longitude: Double? = nil) {
         self.id = UUID()
         self.name = name
         self.messageCount = 0
         self.lastMentioned = nil
+        self.latitude = latitude
+        self.longitude = longitude
+    }
+
+    var coordinate: CLLocationCoordinate2D? {
+        guard let lat = latitude, let lon = longitude else { return nil }
+        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
     }
 }
 
 
 class ListViewModel: ObservableObject {
     @Published var people: [Person] = []
-    @Published var projects: [Project] = []
+    @Published var places: [Place] = []
     @Published var crmMessages: [Message] = [] // Permanent CRM message history
 
     private let userDefaults = UserDefaults.standard
     private let peopleKey = "saved_people"
-    private let projectsKey = "saved_projects"
+    private let placesKey = "saved_places"
     private let crmMessagesKey = "crm_messages"
     
     init() {
@@ -61,41 +72,40 @@ class ListViewModel: ObservableObject {
         print("Deleted person: \(person.name)")
     }
 
-    func deleteProject(_ project: Project) {
-        // Remove project from projects array
-        projects.removeAll { $0.id == project.id }
+    func deletePlace(_ place: Place) {
+        // Remove place from places array
+        places.removeAll { $0.id == place.id }
 
-        // Remove all CRM messages that only mention this project
+        // Remove all CRM messages that only mention this place
         crmMessages.removeAll { message in
-            let mentionsOnlyThisProject = message.mentions.allSatisfy { mention in
-                mention.type == .project && mention.text.replacingOccurrences(of: "@", with: "").lowercased() == project.name.lowercased()
+            let mentionsOnlyThisPlace = message.mentions.allSatisfy { mention in
+                mention.type == .place && mention.text.replacingOccurrences(of: "@", with: "").lowercased() == place.name.lowercased()
             }
-            return mentionsOnlyThisProject
+            return mentionsOnlyThisPlace
         }
 
         saveData()
-        print("Deleted project: \(project.name)")
+        print("Deleted place: \(place.name)")
     }
-    
+
     func addPerson(_ name: String) {
         let person = Person(name: name)
         people.append(person)
         saveData()
     }
     
-    func addProject(_ name: String) {
-        let project = Project(name: name)
-        projects.append(project)
-        saveData()
-    }
     
-    func addMessageToCRM(_ message: Message) {
+    func addMessageToCRM(_ message: Message, placeCoordinates: [String: PlaceSearchResult] = [:]) {
         // Store message permanently for CRM
         crmMessages.append(message)
 
-        // Update people/projects without incrementing counters manually
+        // Update people/places without incrementing counters manually
         for mention in message.mentions {
-            addPersonOrProjectIfNeeded(for: mention.text, type: mention.type)
+            if mention.type == .place, let placeResult = placeCoordinates[mention.text.replacingOccurrences(of: "@", with: "")] {
+                addPlaceWithCoordinates(name: mention.text, coordinate: placeResult.coordinate)
+            } else {
+                addPersonOrPlaceIfNeeded(for: mention.text, type: mention.type)
+            }
         }
 
         // Recalculate all counters from actual message count
@@ -104,7 +114,15 @@ class ListViewModel: ObservableObject {
         saveData()
     }
 
-    private func addPersonOrProjectIfNeeded(for mentionText: String, type: MentionType) {
+    private func addPlaceWithCoordinates(name: String, coordinate: CLLocationCoordinate2D) {
+        let cleanName = name.replacingOccurrences(of: "@", with: "")
+
+        if !places.contains(where: { $0.name.lowercased() == cleanName.lowercased() }) {
+            places.append(Place(name: cleanName, latitude: coordinate.latitude, longitude: coordinate.longitude))
+        }
+    }
+
+    private func addPersonOrPlaceIfNeeded(for mentionText: String, type: MentionType) {
         let cleanName = mentionText.replacingOccurrences(of: "@", with: "")
 
         switch type {
@@ -112,9 +130,9 @@ class ListViewModel: ObservableObject {
             if !people.contains(where: { $0.name.lowercased() == cleanName.lowercased() }) {
                 people.append(Person(name: cleanName))
             }
-        case .project:
-            if !projects.contains(where: { $0.name.lowercased() == cleanName.lowercased() }) {
-                projects.append(Project(name: cleanName))
+        case .place:
+            if !places.contains(where: { $0.name.lowercased() == cleanName.lowercased() }) {
+                places.append(Place(name: cleanName))
             }
         }
     }
@@ -127,10 +145,11 @@ class ListViewModel: ObservableObject {
             people[i].lastMentioned = messagesForPerson.first?.timestamp
         }
 
-        for i in 0..<projects.count {
-            let messagesForProject = getMessagesForProject(projects[i].name)
-            projects[i].messageCount = messagesForProject.count
-            projects[i].lastMentioned = messagesForProject.first?.timestamp
+
+        for i in 0..<places.count {
+            let messagesForPlace = getMessagesForPlace(places[i].name)
+            places[i].messageCount = messagesForPlace.count
+            places[i].lastMentioned = messagesForPlace.first?.timestamp
         }
     }
 
@@ -148,15 +167,15 @@ class ListViewModel: ObservableObject {
                 newPerson.lastMentioned = Date()
                 people.append(newPerson)
             }
-        case .project:
-            if let index = projects.firstIndex(where: { $0.name.lowercased() == cleanName.lowercased() }) {
-                projects[index].messageCount += 1
-                projects[index].lastMentioned = Date()
+        case .place:
+            if let index = places.firstIndex(where: { $0.name.lowercased() == cleanName.lowercased() }) {
+                places[index].messageCount += 1
+                places[index].lastMentioned = Date()
             } else {
-                var newProject = Project(name: cleanName)
-                newProject.messageCount = 1
-                newProject.lastMentioned = Date()
-                projects.append(newProject)
+                var newPlace = Place(name: cleanName)
+                newPlace.messageCount = 1
+                newPlace.lastMentioned = Date()
+                places.append(newPlace)
             }
         }
 
@@ -171,10 +190,11 @@ class ListViewModel: ObservableObject {
         }.sorted { $0.timestamp > $1.timestamp }
     }
 
-    func getMessagesForProject(_ projectName: String) -> [Message] {
+
+    func getMessagesForPlace(_ placeName: String) -> [Message] {
         return crmMessages.filter { message in
             message.mentions.contains { mention in
-                mention.type == .project && mention.text.replacingOccurrences(of: "@", with: "").lowercased() == projectName.lowercased()
+                mention.type == .place && mention.text.replacingOccurrences(of: "@", with: "").lowercased() == placeName.lowercased()
             }
         }.sorted { $0.timestamp > $1.timestamp }
     }
@@ -184,8 +204,8 @@ class ListViewModel: ObservableObject {
         if let peopleData = try? JSONEncoder().encode(people) {
             userDefaults.set(peopleData, forKey: peopleKey)
         }
-        if let projectsData = try? JSONEncoder().encode(projects) {
-            userDefaults.set(projectsData, forKey: projectsKey)
+        if let placesData = try? JSONEncoder().encode(places) {
+            userDefaults.set(placesData, forKey: placesKey)
         }
         if let crmMessagesData = try? JSONEncoder().encode(crmMessages) {
             userDefaults.set(crmMessagesData, forKey: crmMessagesKey)
@@ -198,9 +218,10 @@ class ListViewModel: ObservableObject {
             people = decodedPeople
         }
 
-        if let projectsData = userDefaults.data(forKey: projectsKey),
-           let decodedProjects = try? JSONDecoder().decode([Project].self, from: projectsData) {
-            projects = decodedProjects
+
+        if let placesData = userDefaults.data(forKey: placesKey),
+           let decodedPlaces = try? JSONDecoder().decode([Place].self, from: placesData) {
+            places = decodedPlaces
         }
 
         if let crmMessagesData = userDefaults.data(forKey: crmMessagesKey),

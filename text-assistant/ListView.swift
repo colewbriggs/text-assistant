@@ -32,32 +32,8 @@ struct ListView: View {
                     }
                 }
             }
+
             
-            Section("Projects") {
-                if viewModel.projects.isEmpty {
-                    Text("No projects mentioned yet")
-                        .foregroundColor(.secondary)
-                        .font(.caption)
-                } else {
-                    ForEach(viewModel.projects) { project in
-                        HStack {
-                            Image(systemName: "folder.fill")
-                                .foregroundColor(.green)
-                                .frame(width: 20)
-                            Text(project.name)
-                            Spacer()
-                            Text("\(project.messageCount)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .onDelete { indexSet in
-                        for index in indexSet {
-                            viewModel.deleteProject(viewModel.projects[index])
-                        }
-                    }
-                }
-            }
         }
     }
 }

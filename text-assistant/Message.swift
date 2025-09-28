@@ -30,19 +30,19 @@ struct Mention: Identifiable, Codable {
 
 enum MentionType: String, CaseIterable, Codable {
     case person = "person"
-    case project = "project" 
-    
+    case place = "place"
+
     var color: String {
         switch self {
         case .person: return "blue"
-        case .project: return "green"
+        case .place: return "red"
         }
     }
-    
+
     var icon: String {
         switch self {
         case .person: return "person.fill"
-        case .project: return "folder.fill"
+        case .place: return "location.fill"
         }
     }
 }
